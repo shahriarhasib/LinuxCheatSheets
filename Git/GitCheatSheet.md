@@ -10,20 +10,29 @@
 1. [Installing Git on Windows 11](#1--installing-git-on-windows-11)
 2. [Installing Git on Linux](#2--installing-git-on-linux)
 3. [First-Time Git Configuration](#3--first-time-git-configuration)
-4. [Create a New Git Repository](#4--create-a-new-git-repository)
-5. [Create a New Folder Under a Repo](#5--create-a-new-folder-under-a-repo)
-6. [Create a New Branch](#6--create-a-new-branch)
-7. [Add, Commit, Push & Pull](#7--add-commit-push--pull)
-8. [Working Across Branches and Folders](#8--working-across-branches-and-folders)
-9. [Cloning a Repository](#9--cloning-a-repository)
-10. [Syncing & Updating Your Repo](#10--syncing--updating-your-repo)
-11. [Merging & Resolving Conflicts](#11--merging--resolving-conflicts)
-12. [Undoing Mistakes](#12--undoing-mistakes)
-13. [Viewing History & Status](#13--viewing-history--status)
-14. [Tags & Releases](#14--tags--releases)
-15. [Tips, Tricks & Aliases](#15--tips-tricks--aliases)
-16. [Git Workflows](#16--git-workflows)
-17. [Quick Reference Card](#17--quick-reference-card)
+4. [SSH Key Setup & SSH to GitHub from Windows](#4--ssh-key-setup--ssh-to-github-from-windows)
+5. [Create a New Git Repository](#5--create-a-new-git-repository)
+6. [Create a New Folder Under a Repo](#6--create-a-new-folder-under-a-repo)
+7. [Create a New Branch](#7--create-a-new-branch)
+8. [Add, Commit, Push & Pull](#8--add-commit-push--pull)
+9. [Working Across Branches and Folders](#9--working-across-branches-and-folders)
+10. [Cloning a Repository](#10--cloning-a-repository)
+11. [Fresh Clone — Replace an Existing Local Copy](#11--fresh-clone--replace-an-existing-local-copy)
+12. [Syncing & Updating Your Repo](#12--syncing--updating-your-repo)
+13. [Merging & Resolving Conflicts](#13--merging--resolving-conflicts)
+14. [Undoing Mistakes](#14--undoing-mistakes)
+15. [Viewing History & Status](#15--viewing-history--status)
+16. [See All Repos, Submodules & Folder Structure](#16--see-all-repos-submodules--folder-structure)
+17. [Rename a Repository](#17--rename-a-repository)
+18. [Rename a File or Folder](#18--rename-a-file-or-folder)
+19. [Git Submodules — Complete Guide](#19--git-submodules--complete-guide)
+20. [Move a Repo into Another Repo as a Normal Folder](#20--move-a-repo-into-another-repo-as-a-normal-folder)
+21. [Switch Context — Repo / Branch / Folder / Submodule](#21--switch-context--repo--branch--folder--submodule)
+22. [Global .gitignore — Ignore .ini Files Everywhere](#22--global-gitignore--ignore-ini-files-everywhere)
+23. [Tags & Releases](#23--tags--releases)
+24. [Tips, Tricks & Aliases](#24--tips-tricks--aliases)
+25. [Git Workflows](#25--git-workflows)
+26. [Quick Reference Card](#26--quick-reference-card)
 
 ---
 
@@ -272,34 +281,223 @@ git config user.email
 
 > 💡 **Local settings override global, which override system.**
 
-### Set Up SSH Key (Recommended for GitHub/GitLab)
+---
 
-Using SSH avoids typing your password every time you push:
+## 4. 🔐 SSH Key Setup & SSH to GitHub from Windows
+
+SSH lets you authenticate with GitHub/GitLab **without typing your password** every time. It is faster, more secure, and required for many CI/CD setups.
+
+### Why SSH over HTTPS?
+
+| | HTTPS | SSH |
+|-|-------|-----|
+| 🔑 Auth method | Username + token/password | SSH key pair |
+| 🔒 Security | Good | Better (key-based) |
+| 🔁 Re-auth needed? | Yes (or credential cache) | No (once key is added) |
+| 🖥️ Windows setup | Easy | One-time setup |
+| 🤖 CI/CD friendly | ✅ | ✅ (preferred) |
+
+---
+
+### Step 1 — Generate an SSH Key Pair
+
+Open **Git Bash** (Windows) or a **Terminal** (Linux/macOS):
 
 ```bash
-# Step 1: Generate SSH key pair
+# Generate a modern ed25519 key (recommended)
 ssh-keygen -t ed25519 -C "your.email@example.com"
-# Press Enter for all prompts (or set a passphrase for extra security)
 
-# Step 2: Start SSH agent and add your key
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/id_ed25519
+# If your system doesn't support ed25519, use RSA 4096-bit:
+ssh-keygen -t rsa -b 4096 -C "your.email@example.com"
+```
 
-# Step 3: Copy your public key
-cat ~/.ssh/id_ed25519.pub
-# Copy the entire output
+The prompts:
+```
+Enter file in which to save the key: → Press Enter (uses default ~/.ssh/id_ed25519)
+Enter passphrase (empty for no passphrase): → Press Enter (or set one for extra security)
+Enter same passphrase again: → Press Enter again
+```
 
-# Step 4: Add to GitHub
-# GitHub → Settings → SSH and GPG keys → New SSH key → Paste key
-
-# Step 5: Test connection
-ssh -T git@github.com
-# Should say: "Hi username! You've successfully authenticated..."
+Your keys are now at:
+```
+~/.ssh/id_ed25519       ← PRIVATE key  ⚠️ Never share this!
+~/.ssh/id_ed25519.pub   ← PUBLIC key   ✅ This goes to GitHub
 ```
 
 ---
 
-## 4. 📦 Create a New Git Repository
+### Step 2 — Start the SSH Agent (Windows — Git Bash)
+
+The SSH agent holds your key in memory so you don't re-enter a passphrase:
+
+```bash
+# Start the agent
+eval "$(ssh-agent -s)"
+# Output: Agent pid 1234
+
+# Add your private key to the agent
+ssh-add ~/.ssh/id_ed25519
+
+# Verify key is loaded
+ssh-add -l
+# Output: 256 SHA256:xxxx your.email@example.com (ED25519)
+```
+
+#### Make SSH Agent Auto-Start on Windows (Git Bash)
+
+Add this to your `~/.bashrc` or `~/.bash_profile` so it starts automatically:
+
+```bash
+# Auto-start ssh-agent in Git Bash
+cat >> ~/.bashrc << 'EOF'
+
+# Auto-start SSH agent
+env=~/.ssh/agent.env
+agent_load_env () { test -f "$env" && . "$env" >| /dev/null ; }
+agent_start () {
+    (umask 077; ssh-agent >| "$env")
+    . "$env" >| /dev/null ;
+}
+agent_load_env
+agent_run_state=$(ssh-add -l >| /dev/null 2>&1; echo $?)
+if [ ! "$SSH_AUTH_SOCK" ] || [ $agent_run_state = 2 ]; then
+    agent_start
+    ssh-add ~/.ssh/id_ed25519
+elif [ "$SSH_AUTH_SOCK" ] && [ $agent_run_state = 1 ]; then
+    ssh-add ~/.ssh/id_ed25519
+fi
+unset env
+EOF
+```
+
+---
+
+### Step 3 — Add Public Key to GitHub
+
+```bash
+# Display your public key — copy ALL of this output
+cat ~/.ssh/id_ed25519.pub
+# Output: ssh-ed25519 AAAA...long string... your.email@example.com
+```
+
+Then on GitHub:
+```
+1. Go to: github.com → Profile photo → Settings
+2. Left sidebar: "SSH and GPG keys"
+3. Click: "New SSH key"
+4. Title: Give it a name (e.g., "Windows Laptop" or "Work PC")
+5. Key type: Authentication Key
+6. Key: Paste your public key
+7. Click: "Add SSH key"
+```
+
+For GitLab:
+```
+1. Go to: gitlab.com → User Settings → SSH Keys
+2. Paste your public key and set an expiry date
+3. Click "Add key"
+```
+
+---
+
+### Step 4 — Test Your Connection
+
+```bash
+# Test GitHub connection
+ssh -T git@github.com
+# Expected: Hi shahriarhasib! You've successfully authenticated, but GitHub
+#           does not provide shell access.
+
+# Test GitLab connection
+ssh -T git@gitlab.com
+# Expected: Welcome to GitLab, @username!
+
+# Verbose test (shows exactly what's happening — useful for debugging)
+ssh -vT git@github.com
+```
+
+---
+
+### Step 5 — Use SSH URLs for Git Operations
+
+```bash
+# ✅ SSH URL format
+git clone git@github.com:shahriarhasib/LinuxCheatSheets.git
+
+# ❌ HTTPS URL format (needs token/password)
+git clone https://github.com/shahriarhasib/LinuxCheatSheets.git
+
+# Switch an existing repo from HTTPS to SSH
+git remote set-url origin git@github.com:shahriarhasib/LinuxCheatSheets.git
+
+# Verify the change
+git remote -v
+# Output:
+# origin  git@github.com:shahriarhasib/LinuxCheatSheets.git (fetch)
+# origin  git@github.com:shahriarhasib/LinuxCheatSheets.git (push)
+```
+
+---
+
+### Multiple SSH Keys (Multiple GitHub Accounts)
+
+If you have multiple GitHub accounts (e.g., personal + work):
+
+```bash
+# Step 1: Generate a second key with a different filename
+ssh-keygen -t ed25519 -C "work@company.com" -f ~/.ssh/id_ed25519_work
+
+# Step 2: Create/edit ~/.ssh/config
+```
+
+```
+# ~/.ssh/config
+
+# Personal GitHub account
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519
+
+# Work GitHub account
+Host github-work
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519_work
+```
+
+```bash
+# Step 3: Use the alias in clone/remote URLs
+git clone git@github-work:company/project.git
+
+# Or update an existing remote
+git remote set-url origin git@github-work:company/project.git
+```
+
+---
+
+### Verify SSH Setup — Full Checklist
+
+```bash
+# ✅ 1. Keys exist
+ls -la ~/.ssh/
+# Should see: id_ed25519  id_ed25519.pub
+
+# ✅ 2. Agent is running and key is loaded
+ssh-add -l
+
+# ✅ 3. Public key is on GitHub (check in browser)
+
+# ✅ 4. Connection works
+ssh -T git@github.com
+
+# ✅ 5. Remote URL uses SSH (not HTTPS)
+git remote -v
+```
+
+---
+
+## 5. 📦 Create a New Git Repository
 
 ### Option A: Start From Scratch (Local)
 
@@ -356,7 +554,7 @@ cd my-awesome-project
 
 ---
 
-## 5. 📂 Create a New Folder Under a Repo
+## 6. 📂 Create a New Folder Under a Repo
 
 > ⚠️ **Important:** Git does NOT track empty folders. You must put at least one file inside.
 
@@ -411,7 +609,7 @@ git commit -m "Move oldfile.js into utils folder"
 
 ---
 
-## 6. 🌿 Create a New Branch
+## 7. 🌿 Create a New Branch
 
 Branches let you work on features independently without affecting the main codebase.
 
@@ -479,7 +677,7 @@ git remote prune origin
 
 ---
 
-## 7. ➕ Add, Commit, Push & Pull
+## 8. ➕ Add, Commit, Push & Pull
 
 This is the **core daily workflow** of Git.
 
@@ -622,7 +820,7 @@ git merge origin/main                 # Then apply
 
 ---
 
-## 8. 🔀 Working Across Branches and Folders
+## 9. 🔀 Working Across Branches and Folders
 
 ### Working Under a Different Branch
 
@@ -702,7 +900,7 @@ git stash clear
 
 ---
 
-## 9. 📥 Cloning a Repository
+## 10. 📥 Cloning a Repository
 
 ### Basic Clone
 
@@ -746,7 +944,76 @@ git switch feature/dark-mode
 
 ---
 
-## 10. 🔄 Syncing & Updating After Changes
+## 11. 🔁 Fresh Clone — Replace an Existing Local Copy
+
+Sometimes your local repo is out of sync, corrupted, or just messy and you want a clean restart from the remote.
+
+### Option A: Delete & Re-clone (Cleanest Method)
+
+```bash
+# Step 1: Navigate to parent folder (one level ABOVE your repo)
+cd ~/projects
+
+# Step 2: Fully delete the old local copy
+rm -rf LinuxCheatSheets           # Linux/macOS/Git Bash on Windows
+# Windows CMD:
+# rmdir /s /q LinuxCheatSheets
+
+# Step 3: Clone fresh
+git clone git@github.com:shahriarhasib/LinuxCheatSheets.git
+
+# Step 4: Navigate in and verify
+cd LinuxCheatSheets
+git log --oneline -5
+git status
+```
+
+### Option B: Hard Reset Without Deleting (Keeps Git history)
+
+```bash
+cd LinuxCheatSheets
+
+# Fetch all latest from remote
+git fetch --all
+
+# Hard reset your branch to match remote exactly
+git reset --hard origin/main
+
+# Remove any untracked files and folders
+git clean -fd
+
+# Verify — should say "nothing to commit, working tree clean"
+git status
+```
+
+### Option C: Re-clone With Submodules
+
+If your repo has submodules, include them in the fresh clone:
+
+```bash
+# Delete old copy
+rm -rf LinuxCheatSheets
+
+# Clone and immediately init + update all submodules
+git clone --recurse-submodules git@github.com:shahriarhasib/LinuxCheatSheets.git
+
+# Verify submodules were populated
+cd LinuxCheatSheets
+git submodule status
+```
+
+### When to Use Each Option
+
+| Situation | Best Option |
+|-----------|-------------|
+| Repo is corrupt / .git folder broken | Option A (delete & re-clone) |
+| Too many uncommitted changes to untangle | Option A |
+| You just want to sync to remote HEAD | Option B (hard reset) |
+| You have submodules | Option C |
+
+---
+
+## 12. 🔄 Syncing & Updating After Changes
 
 ### Full Sync Workflow (Daily Routine)
 
@@ -793,7 +1060,7 @@ git pull --rebase origin main
 
 ---
 
-## 11. 🔀 Merging & Resolving Conflicts
+## 13. 🔀 Merging & Resolving Conflicts
 
 ### Merging a Branch
 
@@ -858,7 +1125,7 @@ git mergetool
 
 ---
 
-## 12. ↩️ Undoing Mistakes
+## 14. ↩️ Undoing Mistakes
 
 ### Undo Staged Changes (before commit)
 
@@ -915,7 +1182,7 @@ git reset --hard a3f5c9d   # Reset to a specific commit
 
 ---
 
-## 13. 🔍 Viewing History & Status
+## 15. 🔍 Viewing History & Status
 
 ### Check Current Status
 
@@ -992,7 +1259,650 @@ git blame -n README.md
 
 ---
 
-## 14. 🏷️ Tags & Releases
+## 16. 🗂️ See All Repos, Submodules & Folder Structure
+
+### List All Local Git Repositories on Your Machine
+
+```bash
+# Find every git repo under your home folder
+find ~ -name ".git" -type d 2>/dev/null
+
+# More readable — show only the parent folder of each .git
+find ~ -name ".git" -type d -prune 2>/dev/null | sed 's|/.git||'
+
+# Find repos only 2 levels deep (faster for large systems)
+find ~ -maxdepth 3 -name ".git" -type d -prune 2>/dev/null | sed 's|/.git||'
+```
+
+### List All Submodules in the Current Repo
+
+```bash
+# Show all registered submodules with their status
+git submodule status
+
+# Output explained:
+#  abc1234 tools/logger (v1.2.0)   ← ✅ Up to date
+# -abc1234 tools/logger            ← ❌ Not initialized yet
+# +abc1234 tools/logger (v1.2.0)   ← ⚠️ Has local changes
+
+# Show submodule paths from .gitmodules config file
+cat .gitmodules
+
+# List submodule names only
+git config --file .gitmodules --get-regexp path | awk '{ print $2 }'
+```
+
+### See Folder & File Tree Structure
+
+```bash
+# Simple tree view using find (works on all systems)
+find . -not -path "./.git/*" | sort | sed 's|[^/]*/|  |g'
+
+# Using the 'tree' command (install separately if needed)
+# Install on Ubuntu/Debian:
+sudo apt install tree
+
+# Install on Windows via Git Bash / Choco:
+choco install tree
+
+# Basic tree
+tree
+
+# Tree ignoring node_modules and .git
+tree -I "node_modules|.git"
+
+# Show only directories (no files)
+tree -d
+
+# Show 2 levels deep only
+tree -L 2
+
+# Show hidden files too
+tree -a -I ".git"
+
+# Show file sizes
+tree -sh
+```
+
+### See What's Inside a Repo at a Glance
+
+```bash
+# Current branch, staged/unstaged summary
+git status
+
+# All tracked files in the repo
+git ls-files
+
+# All tracked files including submodule files
+git ls-files --recurse-submodules
+
+# See all remote branches
+git branch -r
+
+# See all local + remote branches
+git branch -a
+```
+
+### Verify Everything Is Clean
+
+```bash
+# Full health check — run these in sequence:
+git status                    # Should say: nothing to commit
+git submodule status          # No leading - or + signs
+git remote -v                 # Correct remote URLs
+git log --oneline -3          # Recent commit history looks right
+git fetch --dry-run           # See if remote has anything new
+```
+
+---
+
+## 17. ✏️ Rename a Repository
+
+### Rename on GitHub (Remote)
+
+```
+1. Go to: github.com/shahriarhasib/old-repo-name
+2. Click "Settings" tab (top of repo page)
+3. Under "Repository name", type the new name
+4. Click "Rename"
+```
+
+> ⚠️ GitHub will automatically redirect old URLs, but you should still update your local remote URL.
+
+### Update Your Local Remote URL After Renaming
+
+```bash
+# Check current remote URL
+git remote -v
+# Output: origin  git@github.com:shahriarhasib/old-repo-name.git (fetch)
+
+# Update to new name
+git remote set-url origin git@github.com:shahriarhasib/new-repo-name.git
+
+# Verify
+git remote -v
+# Output: origin  git@github.com:shahriarhasib/new-repo-name.git (fetch)
+
+# Test that it still works
+git fetch origin
+```
+
+### Rename the Local Folder to Match
+
+```bash
+# Navigate to parent folder
+cd ~/projects
+
+# Rename the local folder
+mv old-repo-name new-repo-name
+
+# Navigate in and verify
+cd new-repo-name
+git remote -v
+```
+
+---
+
+## 18. 📝 Rename a File or Folder
+
+### Rename a File (Git-Tracked)
+
+```bash
+# ✅ Correct way — Git tracks this as a rename (preserves history)
+git mv old-filename.txt new-filename.txt
+
+# Stage and commit
+git commit -m "Rename old-filename.txt to new-filename.txt"
+```
+
+```bash
+# ⚠️ If you rename via file explorer or 'mv' without git:
+mv old-filename.txt new-filename.txt
+# Git sees this as: deleted old-filename.txt + new untracked new-filename.txt
+
+# Fix by staging both changes
+git add -A
+git commit -m "Rename file"
+# Git is smart enough to detect it as a rename if >50% content matches
+```
+
+### Rename a Folder
+
+```bash
+# Rename a folder with Git
+git mv old-folder-name/ new-folder-name/
+git commit -m "Rename folder old-folder-name to new-folder-name"
+
+# Rename a deeply nested folder
+git mv src/components/oldname/ src/components/newname/
+git commit -m "Rename component folder"
+```
+
+### Rename a Branch
+
+```bash
+# Rename current branch
+git branch -m new-branch-name
+
+# Rename a different branch (while on another)
+git branch -m old-branch-name new-branch-name
+
+# Rename on remote too:
+# Step 1: Delete old remote branch
+git push origin --delete old-branch-name
+
+# Step 2: Push renamed branch with tracking
+git push -u origin new-branch-name
+```
+
+### Verify a Rename Was Tracked Correctly
+
+```bash
+# See Git detected it as a rename (not delete+add)
+git log --diff-filter=R --summary --oneline
+
+# Check history of the renamed file (follow renames)
+git log --follow new-filename.txt
+```
+
+---
+
+## 19. 🧩 Git Submodules — Complete Guide
+
+A **submodule** is a Git repo embedded inside another Git repo. The parent repo stores a pointer to a specific commit of the child repo — not the child's actual files.
+
+```
+parent-repo/
+├── .git/
+├── .gitmodules        ← Config file listing all submodules
+├── README.md
+└── tools/
+    └── logger/        ← This is a submodule (separate git repo!)
+        ├── .git       ← Submodule has its own .git
+        └── src/
+```
+
+### Add an Existing Repo as a Submodule
+
+```bash
+# Navigate to parent repo
+cd parent-repo
+
+# Add a submodule at a specific path
+git submodule add git@github.com:shahriarhasib/logger.git tools/logger
+
+# This creates/updates .gitmodules and stages changes
+cat .gitmodules
+# Output:
+# [submodule "tools/logger"]
+#     path = tools/logger
+#     url = git@github.com:shahriarhasib/logger.git
+
+# Commit the addition
+git add .gitmodules tools/logger
+git commit -m "Add logger as submodule at tools/logger"
+git push origin main
+```
+
+### Clone a Repo That Has Submodules
+
+```bash
+# Method 1: Clone and init submodules in one shot
+git clone --recurse-submodules git@github.com:shahriarhasib/parent-repo.git
+
+# Method 2: Clone first, then init
+git clone git@github.com:shahriarhasib/parent-repo.git
+cd parent-repo
+git submodule init
+git submodule update
+
+# Shorthand for init+update
+git submodule update --init
+
+# Init + update including nested submodules (submodules of submodules)
+git submodule update --init --recursive
+```
+
+### Update Submodules to Latest
+
+```bash
+# Update all submodules to the commit the parent points to
+git submodule update
+
+# Update all submodules to their latest remote commit
+git submodule update --remote
+
+# Update a specific submodule only
+git submodule update --remote tools/logger
+
+# Pull latest in all submodules (runs git pull in each)
+git submodule foreach git pull origin main
+```
+
+### Work Inside a Submodule
+
+```bash
+# Navigate into submodule
+cd tools/logger
+
+# Submodules start in "detached HEAD" state — attach to a branch first
+git checkout main
+
+# Make changes, commit as normal
+echo "fix" >> src/logger.js
+git add .
+git commit -m "Fix logger output"
+git push origin main
+
+# Navigate back to parent
+cd ../..
+
+# The parent now sees the submodule has moved ahead — stage and commit
+git add tools/logger
+git commit -m "Update logger submodule to latest"
+git push origin main
+```
+
+### Remove a Submodule
+
+```bash
+# Step 1: Deinit the submodule
+git submodule deinit -f tools/logger
+
+# Step 2: Remove from Git index
+git rm -f tools/logger
+
+# Step 3: Clean up the .git/modules cache
+rm -rf .git/modules/tools/logger
+
+# Step 4: Commit the removal
+git commit -m "Remove logger submodule"
+git push origin main
+```
+
+### Copy / Move a Repo INTO Another Repo as a Submodule
+
+```bash
+# Scenario: You want 'my-utils' repo to become a submodule of 'main-app'
+
+# Step 1: Navigate to main-app
+cd main-app
+
+# Step 2: Add my-utils as a submodule
+git submodule add git@github.com:shahriarhasib/my-utils.git src/my-utils
+
+# Step 3: Commit
+git add .gitmodules src/my-utils
+git commit -m "Add my-utils as submodule at src/my-utils"
+git push origin main
+
+# Step 4: Verify
+git submodule status
+# Output:  abc1234 src/my-utils (main)
+```
+
+### Change the Path of an Existing Submodule
+
+```bash
+# Move submodule from tools/logger → libs/logger
+
+# Step 1: Edit .gitmodules
+nano .gitmodules
+# Change: path = tools/logger
+# To:     path = libs/logger
+
+# Step 2: Move the actual folder
+git mv tools/logger libs/logger
+
+# Step 3: Sync and update
+git submodule sync
+git submodule update --init
+
+# Step 4: Commit
+git add .gitmodules
+git commit -m "Move logger submodule from tools/ to libs/"
+```
+
+---
+
+## 20. 📦 Move a Repo into Another Repo as a Normal Folder
+
+Sometimes you want to **merge** a repo's files directly into another repo — without keeping it as a separate submodule. All commits and history can be preserved.
+
+### Method A: Simple Copy (No History Preserved)
+
+```bash
+# Step 1: Clone the repo you want to absorb
+git clone git@github.com:shahriarhasib/my-utils.git /tmp/my-utils
+
+# Step 2: Copy its files into your main repo
+cp -r /tmp/my-utils/src/* main-app/src/utils/
+
+# Step 3: Remove the .git folder from copied files (it's not a submodule)
+# (The cp above won't copy .git since it's a hidden special folder)
+
+# Step 4: Stage and commit
+cd main-app
+git add src/utils/
+git commit -m "Import my-utils source files into src/utils"
+git push origin main
+```
+
+### Method B: Merge with Full History Preserved (Advanced)
+
+```bash
+cd main-app
+
+# Step 1: Add the other repo as a temporary remote
+git remote add utils-remote git@github.com:shahriarhasib/my-utils.git
+
+# Step 2: Fetch its history
+git fetch utils-remote
+
+# Step 3: Merge it in (allowing unrelated histories)
+git merge --allow-unrelated-histories utils-remote/main
+
+# Step 4: Move its files into a subfolder (optional)
+mkdir -p src/utils
+git mv *.js src/utils/    # Move all root .js files to subfolder
+git commit -m "Reorganize imported utils into src/utils"
+
+# Step 5: Remove the temporary remote
+git remote remove utils-remote
+
+# Step 6: Push
+git push origin main
+```
+
+### Move Files INTO a Submodule Folder
+
+```bash
+# Move a regular folder's files into an existing submodule path
+
+# Step 1: Make sure submodule is initialized
+git submodule update --init
+
+# Step 2: Copy files into submodule
+cp -r my-local-module/* tools/my-submodule/
+
+# Step 3: Commit inside the submodule
+cd tools/my-submodule
+git add .
+git commit -m "Add imported files"
+git push origin main
+
+# Step 4: Update parent to point to new submodule commit
+cd ../..
+git add tools/my-submodule
+git commit -m "Update submodule pointer after import"
+git push origin main
+```
+
+---
+
+## 21. 🔀 Switch Context — Repo / Branch / Folder / Submodule
+
+A clear reference for navigating between everything in Git.
+
+### Switch Between Local Repositories
+
+```bash
+# Simply change directory
+cd ~/projects/repo-a
+cd ~/projects/repo-b
+
+# Quick check: confirm which repo you're in
+git remote get-url origin
+# or
+git rev-parse --show-toplevel    # Shows root path of current repo
+```
+
+### Switch Between Branches
+
+```bash
+# See all branches
+git branch -a
+
+# Switch to an existing branch
+git switch main
+git switch feature/login
+# Old syntax (still works):
+git checkout main
+
+# Switch and create a new branch
+git switch -c new-feature
+git checkout -b new-feature
+
+# Return to the previous branch (like cd -)
+git switch -
+git checkout -
+```
+
+### Switch Between Folders
+
+```bash
+# Move into a subfolder within your repo
+cd src/components
+
+# Go back to repo root
+cd $(git rev-parse --show-toplevel)
+
+# Alias for "go to repo root"
+alias groot='cd $(git rev-parse --show-toplevel)'
+# Then just type: groot
+```
+
+### Switch Into a Submodule
+
+```bash
+# Navigate into a submodule
+cd tools/logger
+
+# Check which commit it's on (may be detached HEAD)
+git status
+git log --oneline -3
+
+# Attach to a branch to make commits
+git checkout main
+# or
+git switch main
+
+# Go back to parent repo
+cd ../..
+# or use:
+cd $(git rev-parse --show-toplevel)
+```
+
+### Check Exactly Where You Are
+
+```bash
+# What repo?
+git rev-parse --show-toplevel
+
+# What branch?
+git branch --show-current
+
+# What commit?
+git log --oneline -1
+
+# Are you in a submodule?
+git rev-parse --show-superproject-working-tree
+# Empty output = you're in the parent repo
+# A path = you're inside a submodule (shows parent repo path)
+
+# Full context at a glance
+echo "Repo:   $(git rev-parse --show-toplevel)"
+echo "Branch: $(git branch --show-current)"
+echo "Commit: $(git log --oneline -1)"
+echo "Status: $(git status -s | wc -l) changed files"
+```
+
+---
+
+## 22. 🚫 Global .gitignore — Ignore .ini Files Everywhere
+
+A **global `.gitignore`** applies to ALL your repos on your machine — perfect for system files, editor configs, and patterns you never want to commit anywhere.
+
+### Set Up Global .gitignore
+
+```bash
+# Step 1: Create the global ignore file
+touch ~/.gitignore_global
+
+# Step 2: Tell Git to use it
+git config --global core.excludesFile ~/.gitignore_global
+
+# Verify it's set
+git config --global core.excludesFile
+# Output: /home/youruser/.gitignore_global
+```
+
+### Add .ini Pattern to Global .gitignore
+
+```bash
+# Open and add patterns
+nano ~/.gitignore_global
+```
+
+Add these lines:
+
+```gitignore
+# ── Windows INI / Config files ──────────────────────────────
+# Ignore ALL .ini files in any folder, subfolder, or submodule
+*.ini
+**/*.ini
+
+# Common Windows system files (good to add too)
+Thumbs.db
+Desktop.ini
+desktop.ini
+$RECYCLE.BIN/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor temp files
+*.swp
+*~
+.vscode/settings.json
+.idea/
+
+# Environment secrets (never commit these!)
+.env
+.env.local
+.env.*.local
+```
+
+> 💡 `*.ini` catches `.ini` files in any folder. `**/*.ini` ensures it catches them in deeply nested submodule paths too. Both together = complete coverage.
+
+### Verify Global Ignore Is Working
+
+```bash
+# Create a test .ini file
+touch /tmp/test-repo/config.ini
+
+# Check if Git would ignore it
+cd /tmp/test-repo
+git init
+git check-ignore -v config.ini
+# Output: /home/user/.gitignore_global:2:*.ini  config.ini
+# (Shows which rule in which file is causing the ignore)
+
+# Check multiple files at once
+git check-ignore -v *.ini **/*.ini
+
+# See all ignored files in current repo
+git status --ignored
+```
+
+### Per-Repo .gitignore vs Global .gitignore
+
+| | Per-Repo `.gitignore` | Global `~/.gitignore_global` |
+|-|-----------------------|------------------------------|
+| Location | Inside each repo | Your home folder |
+| Committed to repo? | ✅ Yes (shared with team) | ❌ No (personal only) |
+| Best For | Project-specific ignores | Personal/machine-specific ignores |
+| Example | `node_modules/`, `dist/` | `.DS_Store`, `*.ini`, `.vscode/` |
+
+### Force-Remove an Already-Tracked .ini File
+
+If a `.ini` file was committed before you added the ignore rule:
+
+```bash
+# Remove it from Git tracking (but keep the file on disk)
+git rm --cached config.ini
+git rm --cached "**/*.ini"   # Remove all tracked .ini files recursively
+
+# Commit the removal
+git commit -m "Stop tracking .ini files (add to .gitignore)"
+git push origin main
+```
+
+---
+
+## 23. 🏷️ Tags & Releases
 
 Tags mark specific points in history — usually version releases.
 
@@ -1027,7 +1937,7 @@ git push origin --delete v1.0.0
 
 ---
 
-## 15. 💡 Tips, Tricks & Aliases
+## 24. 💡 Tips, Tricks & Aliases
 
 ### Useful Git Aliases
 
@@ -1111,7 +2021,7 @@ dist/
 
 ---
 
-## 16. 🌊 Git Workflows
+## 25. 🌊 Git Workflows
 
 ### GitHub Flow (Simple — best for most projects)
 
@@ -1145,51 +2055,83 @@ release                    ──●──●──●──────┘
 
 ---
 
-## 17. 📋 Quick Reference Card
+## 26. 📋 Quick Reference Card
+```
+╔════════════════════════════════════════════════════════════════════╗
+║                     GIT QUICK REFERENCE                            ║
+╠═══════════════╦════════════════════════════════════════════════════╣
+║ SETUP         ║ git config --global user.name "Name"               ║
+║               ║ git config --global user.email "email"             ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ SSH           ║ ssh-keygen -t ed25519 -C "email"   (generate)      ║
+║               ║ ssh-add ~/.ssh/id_ed25519           (load key)     ║
+║               ║ ssh -T git@github.com               (test)         ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ START         ║ git init                   (new repo)              ║
+║               ║ git clone <url>            (copy repo)             ║
+║               ║ git clone --recurse-submodules <url>               ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ SNAPSHOT      ║ git status                 (check state)           ║
+║               ║ git add .                  (stage all)             ║
+║               ║ git add <file>             (stage file)            ║
+║               ║ git commit -m "msg"        (save snapshot)         ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ SYNC          ║ git push origin main       (upload)                ║
+║               ║ git pull origin main       (download+merge)        ║
+║               ║ git fetch                  (download only)         ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ FRESH CLONE   ║ rm -rf <repo> && git clone <url>   (full reset)    ║
+║               ║ git reset --hard origin/main       (hard reset)    ║
+║               ║ git clean -fd                      (remove junk)   ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ BRANCHES      ║ git branch -a              (list all)              ║
+║               ║ git switch -c <name>       (create+switch)         ║
+║               ║ git switch <name>          (switch)                ║
+║               ║ git switch -               (previous branch)       ║
+║               ║ git merge <branch>         (merge into current)    ║
+║               ║ git branch -d <name>       (delete local)          ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ RENAME        ║ git mv old.txt new.txt     (rename file)           ║
+║               ║ git branch -m new-name     (rename branch)         ║
+║               ║ git remote set-url origin <new-url>                ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ SUBMODULES    ║ git submodule status       (list submodules)       ║
+║               ║ git submodule add <url> <path>                     ║
+║               ║ git submodule update --init --recursive            ║
+║               ║ git submodule update --remote  (pull latest)       ║
+║               ║ git submodule deinit -f <path> (remove)            ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ NAVIGATE      ║ cd $(git rev-parse --show-toplevel)   (root)       ║
+║               ║ git branch --show-current  (current branch)        ║
+║               ║ git rev-parse --show-toplevel (repo path)          ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ STRUCTURE     ║ tree -I ".git|node_modules" (folder tree)          ║
+║               ║ git ls-files --recurse-submodules                  ║
+║               ║ find ~ -name ".git" -prune  (find all repos)       ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ HISTORY       ║ git log --oneline          (compact log)           ║
+║               ║ git diff                   (show changes)          ║
+║               ║ git show <hash>            (show commit)           ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ UNDO          ║ git restore <file>         (discard changes)       ║
+║               ║ git restore --staged <f>   (unstage)               ║
+║               ║ git revert HEAD            (safe undo)             ║
+║               ║ git reset --soft HEAD~1    (undo commit, keep)     ║
+║               ║ git reset --hard HEAD~1    (undo commit, delete)   ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ STASH         ║ git stash                  (save temporarily)      ║
+║               ║ git stash pop              (restore)               ║
+║               ║ git stash list             (see all)               ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ IGNORE        ║ core.excludesFile ~/.gitignore_global  (global)    ║
+║               ║ git check-ignore -v <file> (test ignore rule)      ║
+║               ║ git rm --cached <file>     (untrack tracked file)  ║
+╠═══════════════╬════════════════════════════════════════════════════╣
+║ REMOTE        ║ git remote -v              (show remotes)          ║
+║               ║ git remote add origin <url> (add remote)           ║
+╚═══════════════╩════════════════════════════════════════════════════╝
+```
 
-```
-╔══════════════════════════════════════════════════════════════════╗
-║                    GIT QUICK REFERENCE                           ║
-╠══════════════╦═══════════════════════════════════════════════════╣
-║ SETUP        ║ git config --global user.name "Name"              ║
-║              ║ git config --global user.email "email"            ║
-╠══════════════╬═══════════════════════════════════════════════════╣
-║ START        ║ git init                  (new repo)              ║
-║              ║ git clone <url>           (copy repo)             ║
-╠══════════════╬═══════════════════════════════════════════════════╣
-║ SNAPSHOT     ║ git status                (check state)           ║
-║              ║ git add .                 (stage all)             ║
-║              ║ git add <file>            (stage file)            ║
-║              ║ git commit -m "msg"       (save snapshot)         ║
-╠══════════════╬═══════════════════════════════════════════════════╣
-║ SYNC         ║ git push origin main      (upload)                ║
-║              ║ git pull origin main      (download+merge)        ║
-║              ║ git fetch                 (download only)         ║
-╠══════════════╬═══════════════════════════════════════════════════╣
-║ BRANCHES     ║ git branch                (list)                  ║
-║              ║ git checkout -b <name>    (create+switch)         ║
-║              ║ git switch <name>         (switch)                ║
-║              ║ git merge <branch>        (merge into current)    ║
-║              ║ git branch -d <name>      (delete local)          ║
-╠══════════════╬═══════════════════════════════════════════════════╣
-║ HISTORY      ║ git log --oneline         (compact log)           ║
-║              ║ git diff                  (show changes)          ║
-║              ║ git show <hash>           (show commit)           ║
-╠══════════════╬═══════════════════════════════════════════════════╣
-║ UNDO         ║ git restore <file>        (discard changes)       ║
-║              ║ git restore --staged <f>  (unstage)               ║
-║              ║ git revert HEAD           (safe undo)             ║
-║              ║ git reset --soft HEAD~1   (undo commit, keep)     ║
-║              ║ git reset --hard HEAD~1   (undo commit, delete)   ║
-╠══════════════╬═══════════════════════════════════════════════════╣
-║ STASH        ║ git stash                 (save temporarily)      ║
-║              ║ git stash pop             (restore)               ║
-║              ║ git stash list            (see all)               ║
-╠══════════════╬═══════════════════════════════════════════════════╣
-║ REMOTE       ║ git remote -v             (show remotes)          ║
-║              ║ git remote add o <url>    (add remote)            ║
-╚══════════════╩═══════════════════════════════════════════════════╝
-```
 
 ---
 
